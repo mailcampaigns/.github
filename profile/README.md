@@ -1,3 +1,1 @@
-## Hey, this is us 📧
-
-![Just some header image](https://i.imgur.com/ivSUBoI.png)
+![Just some header image](https://i.imgur.com/uwL1YA6.png)
