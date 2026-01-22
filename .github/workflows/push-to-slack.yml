@@ -1,0 +1,221 @@
+name: Push -> Slack summary
+
+on:
+  workflow_call:
+    secrets:
+      SLACK_WEBHOOK_URL:
+        required: false
+      OPENAI_API_KEY:
+        required: false
+    inputs:
+      before_sha:
+        required: true
+        type: string
+      after_sha:
+        required: true
+        type: string
+      ref:
+        required: false
+        type: string
+      model:
+        required: false
+        type: string
+        default: "gpt-4.1-mini"
+
+permissions:
+  contents: read
+
+jobs:
+  summarize:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check required secrets
+        id: secret_check
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          if [ -z "$SLACK_WEBHOOK_URL" ] || [ -z "$OPENAI_API_KEY" ]; then
+            echo "enabled=false" >> $GITHUB_OUTPUT
+            echo "Slack/OpenAI secrets missing; skipping." >> $GITHUB_STEP_SUMMARY
+            exit 0
+          fi
+          echo "enabled=true" >> $GITHUB_OUTPUT
+
+      - name: Collect push data
+        id: push
+        if: ${{ steps.secret_check.outputs.enabled == 'true' }}
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const owner = context.repo.owner
+            const repo = context.repo.repo
+
+            const before = '${{ inputs.before_sha }}'
+            const after = '${{ inputs.after_sha }}'
+            const ref = '${{ inputs.ref }}' || ''
+
+            const isZeroBefore = /^0+$/.test(before)
+
+            let commitCount = 1
+            let files = []
+            let additions = 0
+            let deletions = 0
+            let commits = []
+            let url = ''
+
+            if (!isZeroBefore && before && after && before !== after) {
+              const { data: cmp } = await github.rest.repos.compareCommits({
+                owner,
+                repo,
+                base: before,
+                head: after,
+              })
+
+              commitCount = cmp.ahead_by ?? (cmp.commits?.length ?? 1)
+              commits = (cmp.commits || [])
+                .slice(0, 10)
+                .map(c => ({
+                  sha: c.sha,
+                  message: (c.commit?.message || '').split('\n')[0],
+                  author: c.author?.login || c.commit?.author?.name || '',
+                }))
+
+              files = (cmp.files || [])
+                .slice(0, 30)
+                .map(f => f.filename)
+
+              additions = (cmp.files || []).reduce((sum, f) => sum + (f.additions || 0), 0)
+              deletions = (cmp.files || []).reduce((sum, f) => sum + (f.deletions || 0), 0)
+
+              url = cmp.html_url || ''
+            } else {
+              // Fallback for first push or single commit
+              const { data: commit } = await github.rest.repos.getCommit({
+                owner,
+                repo,
+                ref: after,
+              })
+
+              commitCount = 1
+              commits = [{
+                sha: commit.sha,
+                message: (commit.commit?.message || '').split('\n')[0],
+                author: commit.author?.login || commit.commit?.author?.name || '',
+              }]
+
+              files = (commit.files || []).slice(0, 30).map(f => f.filename)
+              additions = (commit.files || []).reduce((sum, f) => sum + (f.additions || 0), 0)
+              deletions = (commit.files || []).reduce((sum, f) => sum + (f.deletions || 0), 0)
+              url = commit.html_url || ''
+            }
+
+            core.setOutput('owner', owner)
+            core.setOutput('repo', repo)
+            core.setOutput('ref', ref)
+            core.setOutput('before', before)
+            core.setOutput('after', after)
+            core.setOutput('url', url)
+            core.setOutput('commit_count', String(commitCount))
+            core.setOutput('additions', String(additions))
+            core.setOutput('deletions', String(deletions))
+            core.setOutput('files', JSON.stringify(files))
+            core.setOutput('commits', JSON.stringify(commits))
+
+      - name: Generate summary (OpenAI)
+        id: ai
+        if: ${{ steps.secret_check.outputs.enabled == 'true' }}
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          MODEL: ${{ inputs.model }}
+          OWNER: ${{ steps.push.outputs.owner }}
+          REPO: ${{ steps.push.outputs.repo }}
+          REF: ${{ steps.push.outputs.ref }}
+          BEFORE: ${{ steps.push.outputs.before }}
+          AFTER: ${{ steps.push.outputs.after }}
+          URL: ${{ steps.push.outputs.url }}
+          COMMIT_COUNT: ${{ steps.push.outputs.commit_count }}
+          ADDITIONS: ${{ steps.push.outputs.additions }}
+          DELETIONS: ${{ steps.push.outputs.deletions }}
+          FILES: ${{ steps.push.outputs.files }}
+          COMMITS: ${{ steps.push.outputs.commits }}
+        run: |
+          PROMPT=$(jq -n \
+            --arg owner "$OWNER" \
+            --arg repo "$REPO" \
+            --arg ref "$REF" \
+            --arg before "$BEFORE" \
+            --arg after "$AFTER" \
+            --arg url "$URL" \
+            --arg commit_count "$COMMIT_COUNT" \
+            --arg additions "$ADDITIONS" \
+            --arg deletions "$DELETIONS" \
+            --arg files "$FILES" \
+            --arg commits "$COMMITS" \
+            '"Je schrijft een superkorte Slack-samenvatting in het Nederlands, niet-technisch.\n" +
+            "Max 6 bullets totaal.\n" +
+            "MOET bevatten: Aanpassing, Waarom, Waar, Mogelijke impact/risico\u0027s.\n" +
+            "Geen AI-tekst, geen marketing, geen emojis.\n\n" +
+            "Context:\n" +
+            "- Repo: \($owner)/\($repo)\n" +
+            "- Branch/ref: \($ref)\n" +
+            "- Compare/commit URL: \($url)\n" +
+            "- Range: \($before) → \($after)\n" +
+            "- Commits: \($commit_count)\n" +
+            "- Stats: +\($additions)/-\($deletions)\n" +
+            "- Commit messages (top): \($commits)\n" +
+            "- Files (top): \($files)\n\n" +
+            "Output format exact:\n" +
+            "Aanpassing:\n" +
+            "- ...\n" +
+            "Waarom:\n" +
+            "- ...\n" +
+            "Waar:\n" +
+            "- ...\n" +
+            "Impact/risico’s:\n" +
+            "- ...\n"')
+
+          RESP=$(curl -s https://api.openai.com/v1/responses \
+            -H "Authorization: Bearer $OPENAI_API_KEY" \
+            -H "Content-Type: application/json" \
+            -d "$(jq -n --arg model "$MODEL" --arg input "$PROMPT" '{
+              model: $model,
+              input: $input
+            }')")
+
+          TEXT=$(echo "$RESP" | jq -r '.output[0].content[0].text // empty')
+          if [ -z "$TEXT" ]; then
+            TEXT="Aanpassing:\n- Push naar main/master, maar samenvatting faalde.\nWaarom:\n- n.v.t.\nWaar:\n- n.v.t.\nImpact/risico’s:\n- Check commits handmatig."
+          fi
+
+          echo "text<<EOF" >> $GITHUB_OUTPUT
+          echo "$TEXT" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Post to Slack
+        if: ${{ steps.secret_check.outputs.enabled == 'true' }}
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          OWNER: ${{ steps.push.outputs.owner }}
+          REPO: ${{ steps.push.outputs.repo }}
+          REF: ${{ steps.push.outputs.ref }}
+          URL: ${{ steps.push.outputs.url }}
+          AFTER: ${{ steps.push.outputs.after }}
+          COMMIT_COUNT: ${{ steps.push.outputs.commit_count }}
+          SUMMARY: ${{ steps.ai.outputs.text }}
+        run: |
+          SHORT_SHA=$(echo "$AFTER" | cut -c1-7)
+          TITLE="Push to ${REF:-main} — ${OWNER}/${REPO} (${COMMIT_COUNT} commit(s), ${SHORT_SHA})"
+
+          PAYLOAD=$(jq -n \
+            --arg title "$TITLE" \
+            --arg url "$URL" \
+            --arg summary "$SUMMARY" \
+            '{
+              "blocks": [
+                { "type": "section", "text": { "type": "mrkdwn", "text": ("*" + $title + "*\n<" + $url + "|Open details>") } },
+                { "type": "section", "text": { "type": "mrkdwn", "text": $summary } }
+              ]
+            }')
+
+          curl -s -X POST -H 'Content-type: application/json' --data "$PAYLOAD" "$SLACK_WEBHOOK_URL" >/dev/null
