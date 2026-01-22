@@ -17,7 +17,7 @@ on:
       model:
         required: false
         type: string
-        default: "gpt-4.1-mini"
+        default: "gpt-5-mini"
 
 permissions:
   contents: read
@@ -135,7 +135,7 @@ jobs:
             --arg summary "$SUMMARY" \
             '{
               "blocks": [
-                { "type": "section", "text": { "type": "mrkdwn", "text": ("*" + $title + "*\\n<" + $url + "|Open PR>") } },
+                { "type": "section", "text": { "type": "mrkdwn", "text": ("*" + $title + "*\n<" + $url + "|Open PR>") } },
                 { "type": "section", "text": { "type": "mrkdwn", "text": $summary } }
               ]
             }')

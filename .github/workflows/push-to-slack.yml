@@ -20,7 +20,7 @@ on:
       model:
         required: false
         type: string
-        default: "gpt-4.1-mini"
+        default: "gpt-5-mini"
 
 permissions:
   contents: read
@@ -63,6 +63,28 @@ jobs:
             let deletions = 0
             let commits = []
             let url = ''
+
+            // Dedupe: if this push is the result of a merged PR, skip this workflow
+            // so we only post the PR-merged summary.
+            let skipSlack = false
+            let skipReason = ''
+            try {
+              const { data: associatedPRs } = await github.rest.repos.listPullRequestsAssociatedWithCommit({
+                owner,
+                repo,
+                commit_sha: after,
+              })
+
+              const mergedPR = (associatedPRs || []).find(pr => Boolean(pr.merged_at))
+              if (mergedPR) {
+                skipSlack = true
+                skipReason = `Commit is associated with merged PR #${mergedPR.number}`
+              }
+            } catch (e) {
+              // If the endpoint isn't available (or permissions differ), fail open.
+              skipSlack = false
+              skipReason = ''
+            }
 
             if (!isZeroBefore && before && after && before !== after) {
               const { data: cmp } = await github.rest.repos.compareCommits({
@@ -121,10 +143,16 @@ jobs:
             core.setOutput('deletions', String(deletions))
             core.setOutput('files', JSON.stringify(files))
             core.setOutput('commits', JSON.stringify(commits))
+            core.setOutput('skip_slack', String(skipSlack))
+            core.setOutput('skip_reason', skipReason)
+
+            if (skipSlack) {
+              core.summary.addRaw(`Skipped Slack post: ${skipReason}\n`).write()
+            }
 
       - name: Generate summary (OpenAI)
         id: ai
-        if: ${{ steps.secret_check.outputs.enabled == 'true' }}
+        if: ${{ steps.secret_check.outputs.enabled == 'true' && steps.push.outputs.skip_slack != 'true' }}
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           MODEL: ${{ inputs.model }}
@@ -193,7 +221,7 @@ jobs:
           echo "EOF" >> $GITHUB_OUTPUT
 
       - name: Post to Slack
-        if: ${{ steps.secret_check.outputs.enabled == 'true' }}
+        if: ${{ steps.secret_check.outputs.enabled == 'true' && steps.push.outputs.skip_slack != 'true' }}
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
           OWNER: ${{ steps.push.outputs.owner }}
