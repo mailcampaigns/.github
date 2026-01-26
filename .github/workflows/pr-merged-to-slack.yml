@@ -100,7 +100,7 @@ jobs:
             --arg changed_files "$CHANGED_FILES" \
             --arg additions "$ADDITIONS" \
             --arg deletions "$DELETIONS" \
-            '"Je schrijft een superkorte Slack-samenvatting in het Nederlands, niet-technisch.\nMax 6 bullets totaal.\nMOET bevatten: Aanpassing, Waarom, Waar, Mogelijke impact/risico\u0027s.\nGeen AI-tekst, geen marketing, geen emojis.\n\nContext:\n- Title: \($title)\n- Description: \($body)\n- Files (top): \($files)\n- Stats: \($changed_files) files, +\($additions)/-\($deletions)\n\nOutput format exact:\nAanpassing:\n- ...\nWaarom:\n- ...\nWaar:\n- ...\nImpact/risico’s:\n- ...\n"')
+            '"Je schrijft een superkorte Slack-samenvatting in het Nederlands, niet-technisch.\nMaximaal twee zinnen.\nMOET bevatten: Aanpassing, Waarom, Waar\nGebruik emojis om duidelijker te maken in wat voor categorie het valt. Bijvoorbeeld een 🐛 voor een bugfix en 🎨 voor styling.\n\nContext:\n- Title: \($title)\n- Description: \($body)\n- Files (top): \($files)\n- Stats: \($changed_files) files, +\($additions)/-\($deletions)\n- ...\n"')
 
           # Call OpenAI Responses API
           RESP=$(curl -s https://api.openai.com/v1/responses \
@@ -135,7 +135,7 @@ jobs:
             --arg summary "$SUMMARY" \
             '{
               "blocks": [
-                { "type": "section", "text": { "type": "mrkdwn", "text": ("*" + $title + "*\n<" + $url + "|Open PR>") } },
+                { "type": "section", "text": { "type": "mrkdwn", "text": ("\n<" + $url + "|Bekijk changes>") } },
                 { "type": "section", "text": { "type": "mrkdwn", "text": $summary } }
               ]
             }')

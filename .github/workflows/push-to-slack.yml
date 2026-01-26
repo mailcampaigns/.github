@@ -181,9 +181,9 @@ jobs:
             --arg files "$FILES" \
             --arg commits "$COMMITS" \
             '"Je schrijft een superkorte Slack-samenvatting in het Nederlands, niet-technisch.\n" +
-            "Max 6 bullets totaal.\n" +
-            "MOET bevatten: Aanpassing, Waarom, Waar, Mogelijke impact/risico\u0027s.\n" +
-            "Geen AI-tekst, geen marketing, geen emojis.\n\n" +
+            "Maximaal twee zinnen.\n" +
+            "MOET bevatten: Aanpassing, Waarom, Waar.\n" +
+            "Gebruik emojis om duidelijker te maken in wat voor categorie het valt. Bijvoorbeeld een 🐛 voor een bugfix en 🎨 voor styli  ng.\n\n" +
             "Context:\n" +
             "- Repo: \($owner)/\($repo)\n" +
             "- Branch/ref: \($ref)\n" +
@@ -193,15 +193,7 @@ jobs:
             "- Stats: +\($additions)/-\($deletions)\n" +
             "- Commit messages (top): \($commits)\n" +
             "- Files (top): \($files)\n\n" +
-            "Output format exact:\n" +
-            "Aanpassing:\n" +
-            "- ...\n" +
-            "Waarom:\n" +
-            "- ...\n" +
-            "Waar:\n" +
-            "- ...\n" +
-            "Impact/risico’s:\n" +
-            "- ...\n"')
+            ""')
 
           RESP=$(curl -s https://api.openai.com/v1/responses \
             -H "Authorization: Bearer $OPENAI_API_KEY" \
@@ -241,7 +233,7 @@ jobs:
             --arg summary "$SUMMARY" \
             '{
               "blocks": [
-                { "type": "section", "text": { "type": "mrkdwn", "text": ("*" + $title + "*\n<" + $url + "|Open details>") } },
+                { "type": "section", "text": { "type": "mrkdwn", "text": ("*\n<" + $url + "|Bekijk changes>") } },
                 { "type": "section", "text": { "type": "mrkdwn", "text": $summary } }
               ]
             }')
