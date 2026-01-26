@@ -169,9 +169,6 @@ jobs:
           COMMITS: ${{ steps.push.outputs.commits }}
         run: |
           PROMPT=$(jq -n \
-            --arg owner "$OWNER" \
-            --arg repo "$REPO" \
-            --arg ref "$REF" \
             --arg before "$BEFORE" \
             --arg after "$AFTER" \
             --arg url "$URL" \
@@ -181,12 +178,16 @@ jobs:
             --arg files "$FILES" \
             --arg commits "$COMMITS" \
             '"Je schrijft een superkorte Slack-samenvatting in het Nederlands, niet-technisch.\n" +
-            "Maximaal twee zinnen.\n" +
-            "MOET bevatten: Aanpassing, Waarom, Waar.\n" +
-            "Gebruik emojis om duidelijker te maken in wat voor categorie het valt. Bijvoorbeeld een 🐛 voor een bugfix en 🎨 voor styli  ng.\n\n" +
+            "Maximaal twee zinnen.\n\n" +
+            "MOET bevatten (in deze volgorde, als kopjes of in 1-2 zinnen):\n" +
+            "- Aanpassing: wat is er veranderd?\n" +
+            "- Waarom: waarom is dit gedaan?\n" +
+            "- Waar: in welk deel van het systeem is dit (globaal)? (bv. dashboard, checkout, e-mailcampagnes, admin, API, instellingen).\n\n" +
+            "Belangrijk:\n" +
+            "- Noem NOOIT: repository, branch, commits/sha’s, ranges of technische implementatiedetails.\n" +
+            "- Waar hoeft niet specifiek te zijn; kies een algemene plek op basis van commit-messages en bestandsnamen. Als onzeker: ‘algemene verbetering’.\n" +
+            "- Gebruik 1-2 passende emoji’s om de categorie aan te duiden (bv. 🐛 bugfix, ✨ verbetering, 🎨 styling, 🔒 security).\n\n" +
             "Context:\n" +
-            "- Repo: \($owner)/\($repo)\n" +
-            "- Branch/ref: \($ref)\n" +
             "- Compare/commit URL: \($url)\n" +
             "- Range: \($before) → \($after)\n" +
             "- Commits: \($commit_count)\n" +
@@ -225,7 +226,7 @@ jobs:
           SUMMARY: ${{ steps.ai.outputs.text }}
         run: |
           SHORT_SHA=$(echo "$AFTER" | cut -c1-7)
-          TITLE="Push to ${REF:-main} — ${OWNER}/${REPO} (${COMMIT_COUNT} commit(s), ${SHORT_SHA})"
+          TITLE="Nieuwe update (${COMMIT_COUNT} commit(s), ${SHORT_SHA})"
 
           PAYLOAD=$(jq -n \
             --arg title "$TITLE" \
@@ -233,7 +234,7 @@ jobs:
             --arg summary "$SUMMARY" \
             '{
               "blocks": [
-                { "type": "section", "text": { "type": "mrkdwn", "text": ("*\n<" + $url + "|Bekijk changes>") } },
+                { "type": "section", "text": { "type": "mrkdwn", "text": ("<" + $url + "|Bekijk changes>") } },
                 { "type": "section", "text": { "type": "mrkdwn", "text": $summary } }
               ]
             }')

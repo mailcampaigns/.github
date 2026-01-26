@@ -100,7 +100,7 @@ jobs:
             --arg changed_files "$CHANGED_FILES" \
             --arg additions "$ADDITIONS" \
             --arg deletions "$DELETIONS" \
-            '"Je schrijft een superkorte Slack-samenvatting in het Nederlands, niet-technisch.\nMaximaal twee zinnen.\nMOET bevatten: Aanpassing, Waarom, Waar\nGebruik emojis om duidelijker te maken in wat voor categorie het valt. Bijvoorbeeld een 🐛 voor een bugfix en 🎨 voor styling.\n\nContext:\n- Title: \($title)\n- Description: \($body)\n- Files (top): \($files)\n- Stats: \($changed_files) files, +\($additions)/-\($deletions)\n- ...\n"')
+            '"Je schrijft een superkorte Slack-samenvatting in het Nederlands, niet-technisch.\nMaximaal twee zinnen.\n\nMOET bevatten (in deze volgorde, als kopjes of in 1-2 zinnen):\n- Aanpassing: wat is er veranderd?\n- Waarom: waarom is dit gedaan?\n- Waar: in welk deel van het systeem is dit (globaal)? (bv. dashboard, checkout, e-mailcampagnes, admin, API, instellingen).\n\nBelangrijk:\n- Noem NOOIT: repository, branch, PR-nummer, commits/sha’s of technische implementatiedetails.\n- Waar hoeft niet specifiek te zijn; kies een algemene plek op basis van titel/omschrijving/bestandsnamen. Als onzeker: ‘algemene verbetering’.\n- Gebruik 1-2 passende emoji’s om de categorie aan te duiden (bv. 🐛 bugfix, ✨ verbetering, 🎨 styling, 🔒 security).\n\nContext:\n- Title: \($title)\n- Description: \($body)\n- Files (top): \($files)\n- Stats: \($changed_files) files, +\($additions)/-\($deletions)\n"')
 
           # Call OpenAI Responses API
           RESP=$(curl -s https://api.openai.com/v1/responses \
