@@ -1,0 +1,77 @@
+name: Add open issues to development project
+
+on:
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: add-open-issues-to-development-project
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.PROJECTS_TOKEN }}
+      ORGANIZATION: mailcampaigns
+      PROJECT_NUMBER: "6"
+    steps:
+      - name: Check authentication
+        shell: bash
+        run: |
+          if [[ -z "${GH_TOKEN}" ]]; then
+            echo "Repository secret PROJECTS_TOKEN is required."
+            echo "Grant it read access to organization issues and write access to organization projects."
+            exit 1
+          fi
+
+      - name: Add every open issue to the project
+        shell: bash
+        run: |
+          project_id="$(
+            gh api graphql \
+              -f query='query($login: String!, $number: Int!) {
+                organization(login: $login) {
+                  projectV2(number: $number) { id }
+                }
+              }' \
+              -f login="${ORGANIZATION}" \
+              -F number="${PROJECT_NUMBER}" \
+              --jq '.data.organization.projectV2.id'
+          )"
+
+          if [[ -z "${project_id}" || "${project_id}" == "null" ]]; then
+            echo "Could not resolve ${ORGANIZATION} project ${PROJECT_NUMBER}."
+            exit 1
+          fi
+
+          issue_count=0
+          while IFS= read -r content_id; do
+            [[ -z "${content_id}" ]] && continue
+
+            gh api graphql \
+              -f query='mutation($project: ID!, $content: ID!) {
+                addProjectV2ItemById(input: {projectId: $project, contentId: $content}) {
+                  item { id }
+                }
+              }' \
+              -f project="${project_id}" \
+              -f content="${content_id}" \
+              --silent
+
+            issue_count=$((issue_count + 1))
+          done < <(
+            gh search issues \
+              --owner "${ORGANIZATION}" \
+              --state open \
+              --archived=false \
+              --limit 1000 \
+              --json id \
+              --jq '.[].id'
+          )
+
+          echo "Synchronized ${issue_count} open issues with project ${PROJECT_NUMBER}."
