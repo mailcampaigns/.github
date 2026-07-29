@@ -50,28 +50,32 @@ jobs:
           fi
 
           issue_count=0
-          while IFS= read -r content_id; do
-            [[ -z "${content_id}" ]] && continue
+          while IFS= read -r repository; do
+            [[ -z "${repository}" ]] && continue
 
-            gh api graphql \
-              -f query='mutation($project: ID!, $content: ID!) {
-                addProjectV2ItemById(input: {projectId: $project, contentId: $content}) {
-                  item { id }
-                }
-              }' \
-              -f project="${project_id}" \
-              -f content="${content_id}" \
-              --silent
+            while IFS= read -r content_id; do
+              [[ -z "${content_id}" ]] && continue
 
-            issue_count=$((issue_count + 1))
+              gh api graphql \
+                -f query='mutation($project: ID!, $content: ID!) {
+                  addProjectV2ItemById(input: {projectId: $project, contentId: $content}) {
+                    item { id }
+                  }
+                }' \
+                -f project="${project_id}" \
+                -f content="${content_id}" \
+                --silent
+
+              issue_count=$((issue_count + 1))
+            done < <(
+              gh api --paginate \
+                "/repos/${ORGANIZATION}/${repository}/issues?state=open&per_page=100" \
+                --jq '.[] | select(has("pull_request") | not) | .node_id'
+            )
           done < <(
-            gh search issues \
-              --owner "${ORGANIZATION}" \
-              --state open \
-              --archived=false \
-              --limit 1000 \
-              --json id \
-              --jq '.[].id'
+            gh api --paginate \
+              "/orgs/${ORGANIZATION}/repos?type=all&per_page=100" \
+              --jq '.[] | select(.archived | not) | .name'
           )
 
           echo "Synchronized ${issue_count} open issues with project ${PROJECT_NUMBER}."
